@@ -103,7 +103,7 @@ setup(
     dependency_links=dependency_links,
     tests_require=['pytest'],
     setup_requires=['pytest-runner'],
-    url='https://github.com/cnp3/ipmininet',
+    url='https://github.com/akemery/ipmininet',
     cmdclass={
         'develop': PostDevelopCommand,
         'install': PostInstallCommand,
