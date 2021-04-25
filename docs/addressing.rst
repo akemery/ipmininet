@@ -348,6 +348,13 @@ You can also add routes manually when the network has started since you can run 
     from ipmininet.clean import cleanup
     cleanup(level='warning')
 
+    mocking = MockStdIn()
+    mocking.close_on_start_cli()
+
+.. testcleanup:: *
+
+    mocking.clean()
+
 .. testoutput:: *
     :hide:
     :options: +ELLIPSIS

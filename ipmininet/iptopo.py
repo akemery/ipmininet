@@ -1,16 +1,18 @@
 """This module defines topology class that supports adding L3 routers"""
-import functools
-from typing import Union, Type, Dict, List, Optional
+import itertools
+from typing import Union, Type, Dict, List, Tuple, Any
 
 from mininet.topo import Topo
 from mininet.log import lg
 
 from ipmininet.overlay import Overlay, Subnet
-from ipmininet.utils import get_set
+from ipmininet.utils import get_set, is_container
+from ipmininet.node_description import RouterDescription, HostDescription,\
+    LinkDescription
 from ipmininet.router.config import BasicRouterConfig, OSPFArea, AS,\
     iBGPFullMesh, OpenrDomain
-from ipmininet.router.config.base import Daemon, RouterConfig, NodeConfig
-from ipmininet.host.config import HostConfig, DNSZone
+from ipmininet.router.config.base import Daemon, NodeConfig
+from ipmininet.host.config import DNSZone
 from ipmininet.ipnet import IPNet
 
 
@@ -57,12 +59,44 @@ class IPTopo(Topo):
            :param name: the name of the node"""
         return HostDescription(super().addHost(str(name), **kwargs), self)
 
-    def addRouter(self, name: str, **kwargs) -> 'RouterDescription':
+    def addRouter(self,
+                  name: str,
+                  routerDescription: 'RouterDescription' = RouterDescription,
+                  **kwargs) -> 'RouterDescription':
         """Add a router to the topology
 
-        :param name: the name of the node"""
-        return RouterDescription(self.addNode(str(name), isRouter=True,
+        :param name: the name of the node
+        "param routerDescription: the RouterDescription class to return
+            (optional)"""
+        return routerDescription(self.addNode(str(name),
+                                              isRouter=True,
                                               **kwargs), self)
+
+    def addRouters(self, *routers: Union[str, Tuple[str, Dict[str, Any]]],
+                   **common_opts) -> List['RouterDescription']:
+        """Add several routers in one go.
+
+        :param routers: router names or tuples (each containing the router name
+            and options only applying to this router)
+        :param common_opts: common router options (optional)"""
+        new_routers = []
+        for router_info in routers:
+            # Accept either router names or tuple containing both a router name
+            # and the specific options of the router
+            n, opt = router_info if is_container(router_info) \
+                else (router_info, {})
+            # Merge router options by giving precedence to specific ones
+            router_opts = {k: v
+                           for k, v in itertools.chain(common_opts.items(),
+                                                       opt.items())}
+            try:
+                new_routers.append(self.addRouter(n, **router_opts))
+            except Exception as e:
+                lg.error("Cannot create router '{}' with options '{}'"
+                         .format(n, router_opts))
+                raise e
+
+        return new_routers
 
     def addLink(self, node1: str, node2: str, port1=None, port2=None,
                 key=None, **opts) -> 'LinkDescription':
@@ -73,21 +107,36 @@ class IPTopo(Topo):
            :param key: a key to identify the link (optional)
            :param opts: link options (optional)
            :return: link info key"""
-
-        # XXX When PR https://github.com/mininet/mininet/pull/895
-        # is accepted, we can replace this code by a call to the
-        # super() method
-        if not opts and self.lopts:
-            opts = self.lopts
-        port1, port2 = self.addPort(node1, node2, port1, port2)
-        opts = dict(opts)
-        opts.update(node1=node1, node2=node2, port1=port1, port2=port2)
-        key = self.g.add_edge(node1, node2, key, opts)
+        key = super().addLink(node1=node1, node2=node2, port1=port1, port2=port2, key=key, **opts)
 
         # Create an abstraction to allow additional calls
         link_description = LinkDescription(self, node1, node2, key,
                                            self.linkInfo(node1, node2, key))
         return link_description
+
+    def addLinks(self, *links: Union[Tuple[str, str],
+                                     Tuple[str, str, Dict[str, Any]]],
+                 **common_opts) -> List['LinkDescription']:
+        """Add several links in one go.
+
+        :param links: link description tuples, either only both node names
+            or nodes names with link-specific options
+        :param common_opts: common link options (optional)"""
+
+        new_links = []
+        for u, v, *opt in links:
+            # Merge link options by giving precedence to specific ones
+            opt = opt[0] if opt else {}
+            link_opts = {k: v for k, v in itertools.chain(common_opts.items(),
+                                                          opt.items())}
+            try:
+                new_links.append(self.addLink(u, v, **link_opts))
+            except Exception as e:
+                lg.error("Cannot create link between '{}' and '{}'"
+                         " with options '{}'".format(u, v, link_opts))
+                raise e
+
+        return new_links
 
     def addDaemon(self, node: str, daemon: Union[Daemon, Type[Daemon]],
                   default_cfg_class: Type[NodeConfig] = BasicRouterConfig,
@@ -191,117 +240,3 @@ class OverlayWrapper:
 
     def __call__(self, *args, **kwargs):
         return self.topo.addOverlay(self.overlay(*args, **kwargs))
-
-
-class NodeDescription(str):
-
-    def __new__(cls, value, *args, **kwargs):
-        return super().__new__(cls, value)
-
-    def __init__(self, o, topo: Optional[IPTopo] = None):
-        self.topo = topo
-        super().__init__()
-
-    def addDaemon(self, daemon: Union[Daemon, Type[Daemon]],
-                  default_cfg_class: Type[NodeConfig] = BasicRouterConfig,
-                  cfg_daemon_list="daemons", **daemon_params):
-        """Add the daemon to the list of daemons to start on the node.
-
-        :param daemon: daemon class
-        :param default_cfg_class: config class to use
-            if there is no configuration class defined for the router yet.
-        :param cfg_daemon_list: name of the parameter containing
-            the list of daemons in your config class constructor.
-            For instance, RouterConfig uses 'daemons'
-            but BasicRouterConfig uses 'additional_daemons'.
-        :param daemon_params: all the parameters to give
-            when instantiating the daemon class."""
-        if self.topo is None:
-            return
-        self.topo.addDaemon(self, daemon, default_cfg_class=default_cfg_class,
-                            cfg_daemon_list=cfg_daemon_list, **daemon_params)
-
-    def get_config(self, daemon: Union[Daemon, Type[Daemon]], **kwargs):
-        if self.topo is None:
-            return
-        return daemon.get_config(topo=self.topo, node=self, **kwargs)
-
-
-class RouterDescription(NodeDescription):
-    def addDaemon(self, daemon: Union[Daemon, Type[Daemon]],
-                  default_cfg_class: Type[RouterConfig] = BasicRouterConfig,
-                  **kwargs):
-        super(RouterDescription, self)\
-            .addDaemon(daemon, default_cfg_class=default_cfg_class, **kwargs)
-
-
-class HostDescription(NodeDescription):
-
-    def addDaemon(self, daemon: Union[Daemon, Type[Daemon]],
-                  default_cfg_class: Type[HostConfig] = HostConfig, **kwargs):
-        super(HostDescription, self)\
-            .addDaemon(daemon, default_cfg_class=default_cfg_class, **kwargs)
-
-
-@functools.total_ordering
-class LinkDescription:
-
-    def __init__(self, topo: IPTopo, src: str, dst: str, key, link_attrs: Dict):
-        self.src = src
-        self.dst = dst
-        self.key = key
-        self.link_attrs = link_attrs
-        self.src_intf = IntfDescription(self.src, topo, self,
-                                        self.link_attrs.setdefault("params1",
-                                                                   {}))
-        self.dst_intf = IntfDescription(self.dst, topo, self,
-                                        self.link_attrs.setdefault("params2",
-                                                                   {}))
-        super().__init__()
-
-    def __getitem__(self, item):
-        if isinstance(item, int):
-            if item == 0:
-                return self.src_intf
-            if item == 1:
-                return self.dst_intf
-            if item == 3:
-                return self.key
-            raise IndexError("Links have only two nodes and one key")
-
-        if item == self.src:
-            return self.src_intf
-        if item == self.dst:
-            return self.dst_intf
-        raise KeyError("Node '%s' is not on this link" % item)
-
-    # The following methods allow this object to behave like an edge key
-    # for mininet.topo.MultiGraph
-
-    def __hash__(self):
-        return self.key.__hash__()
-
-    def __eq__(self, other):
-        return self.key == other
-
-    def __lt__(self, other):
-        return self.key.__lt__(other)
-
-
-class IntfDescription(NodeDescription):
-
-    def __init__(self, o: str, topo: IPTopo, link: LinkDescription,
-                 intf_attrs: Dict):
-        self.link = link
-        self.node = o
-        self.intf_attrs = intf_attrs
-        super().__init__(o, topo)
-
-    def addParams(self, **kwargs):
-        self.intf_attrs.update(kwargs)
-
-    def __hash__(self):
-        return self.node.__hash__()
-
-    def __eq__(self, other):
-        return self.node.__eq__(other)

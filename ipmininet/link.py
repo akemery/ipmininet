@@ -1,6 +1,7 @@
 """Classes for interfaces and links that are IP-agnostic. This basically
-enhance the Intf class from Mininet, and then define sane defaults for the link
-classes and a new TCIntf base."""
+enhance the TCIntf class from Mininet, and then define sane defaults for the link
+classes."""
+from copy import deepcopy
 from itertools import chain
 import subprocess
 from ipaddress import ip_interface, IPv4Interface, IPv6Interface
@@ -15,7 +16,7 @@ from mininet.log import lg as log
 from mininet.node import Node
 
 
-class IPIntf(_m.Intf):
+class IPIntf(_m.TCIntf):
     """This class represents a node interface. It is IP-agnostic, as in
     its `addresses` attribute is a dictionary keyed by IP version,
     containing the list of all addresses for a given version"""
@@ -29,6 +30,8 @@ class IPIntf(_m.Intf):
         super().__init__(*args, **kwargs)
         self.isUp(setUp=True)
         self._refresh_addresses()
+        self.backup_addresses = {4: [], 6: []}
+        self.restore_cmds = []
 
     @property
     def igp_area(self) -> str:
@@ -221,6 +224,23 @@ class IPIntf(_m.Intf):
         self._refresh_addresses()
         return self.ip, self.mac
 
+    def down(self, backup=True):
+        """Down the interface and, if 'backup' is true,
+           save the current allocated IPs"""
+        if backup:
+            self.backup_addresses = deepcopy(self.addresses)
+
+        self.node.cmd("ip link set dev " + self.name + " down")
+
+    def up(self, restore=True):
+        """Up the interface and, if 'restore' is true,
+           restore the saved addresses"""
+        self.isUp(setUp=True)
+        if restore:
+            self.setIP(self.backup_addresses[4] + self.backup_addresses[6])
+            for cmd in self.restore_cmds:
+                self.node.cmd(cmd)
+
 
 def _addresses_of(devname: str, node: Optional[Node] = None):
     """Return the addresses of a named interface"""
@@ -277,9 +297,9 @@ class IPLink(_m.Link):
         super().__init__(node1=node1, node2=node2, intf=intf, *args, **kwargs)
 
 
-# Monkey patch mininit.link ...
-TCIntf = _m.TCIntf
-TCIntf.__bases__ = (IPIntf,)
+# This aliases is there for a historical reason: IPIntf used to extend
+# mininet's Intf and not the mininet's TCIntf
+TCIntf = IPIntf
 
 
 @functools.total_ordering

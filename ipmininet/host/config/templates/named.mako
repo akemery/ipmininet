@@ -10,7 +10,9 @@ logging {
 
 % for filename, zone in node.named.zones.items():
 zone "${zone.name}" {
-    % if zone.master:
+    % if zone.soa_record is None:
+    type hint;
+    % elif zone.master:
     type master;
     % else:
     type slave;
@@ -23,3 +25,7 @@ zone "${zone.name}" {
     file "${filename}";
 };
 % endfor
+
+options {
+    dnssec-validation no;
+};

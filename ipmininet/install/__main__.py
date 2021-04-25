@@ -1,7 +1,7 @@
 import os
 
 from .install import parse_args, dist, install_mininet, install_frrouting, \
-    enable_ipv6, install_openr
+    install_exabgp, enable_ipv6, install_openr
 
 if __name__ == "__main__":
 
@@ -15,6 +15,9 @@ if __name__ == "__main__":
 
     if args.all or args.install_frrouting:
         install_frrouting(args.output_dir)
+
+    if args.all or args.install_exabgp:
+        install_exabgp(args.output_dir)
 
     if args.all or args.install_radvd:
         if dist.NAME == "Ubuntu" or dist.NAME == "Debian":
@@ -46,7 +49,7 @@ if __name__ == "__main__":
 
     dist.install("bridge-utils", "traceroute", "nmap", "iperf3")
     if dist.NAME == "Fedora":
-        dist.install("nc", "bind-utils", "wireshark")
+        dist.install("nc", "bind-utils", "wireshark", "tc", "kernel-modules-extra")
     else:
         dist.install("netcat-openbsd", "dnsutils", "tshark")
 

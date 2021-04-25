@@ -20,8 +20,9 @@ import mako.exceptions
 from mininet.log import lg as log
 
 if TYPE_CHECKING:
-    from ipmininet.router import IPNode, Router
-    from ipmininet.iptopo import IPTopo, NodeDescription
+    from ipmininet.router import IPNode, Router, OpenrRouter, ProcessHelper
+    from ipmininet.iptopo import IPTopo
+    from ipmininet.node_description import NodeDescription
 DaemonOption = Union['Daemon', Type['Daemon'],
                      Tuple[Union['Daemon', Type['Daemon']], Dict]]
 
@@ -290,6 +291,12 @@ class Daemon(metaclass=abc.ABCMeta):
         """Get the options ConfigDict for this daemon"""
         return self._options
 
+    @property
+    def logdir(self) -> str:
+        if 'logfile' in self._options:
+            return os.path.dirname(self._options['logfile'])
+        return None
+
     def build(self) -> ConfigDict:
         """Build the configuration tree for this daemon
 
@@ -397,8 +404,10 @@ class Daemon(metaclass=abc.ABCMeta):
     def set_defaults(self, defaults):
         """Update defaults to contain the defaults specific to this daemon"""
 
-    def has_started(self) -> bool:
-        """Return whether this daemon has started or not"""
+    def has_started(self, node_exec: 'ProcessHelper' = None) -> bool:
+        """Return whether this daemon has started or not
+        :param node_exec:
+        """
         return True
 
     @classmethod
@@ -445,3 +454,44 @@ class BasicRouterConfig(RouterConfig):
             d.append(OSPF6)
         d.extend(additional_daemons)
         super().__init__(node, daemons=d, *args, **kwargs)
+
+
+class BorderRouterConfig(BasicRouterConfig):
+    """A router config that will run both OSPF and BGP, and redistribute all
+    connected router into BGP."""
+
+    def __init__(self, node: 'Router',
+                 daemons: Iterable[DaemonOption] = (),
+                 additional_daemons: Iterable[DaemonOption] = (),
+                 *args, **kwargs):
+        """A simple router made of at least an OSPF daemon and a BGP daemon
+
+        :param additional_daemons: Other daemons that should be used"""
+        from .bgp import BGP, AF_INET, AF_INET6
+
+        af = []
+        if node.use_v4:
+            af.append(AF_INET(redistribute=('connected', 'ospf')))
+        if node.use_v6:
+            af.append(AF_INET6(redistribute=('connected', 'ospf6')))
+        if af:
+            d = list(daemons)
+            d.append((BGP, {'address_families': af}))
+        super().__init__(node, daemons=d, *args, **kwargs)
+
+
+class OpenrRouterConfig(RouterConfig):
+    """A basic router that will run an OpenR daemon"""
+    def __init__(self, node: 'OpenrRouter',
+                 daemons: Iterable[DaemonOption] = (),
+                 additional_daemons: Iterable[DaemonOption] = (),
+                 *args, **kwargs):
+        """A simple router made of at least an OpenR daemon
+
+        :param additional_daemons: Other daemons that should be used"""
+        # Importing here to avoid circular import
+        from .openr import Openr
+        daemon_list = list(daemons)
+        daemon_list.append(Openr)
+        daemon_list.extend(additional_daemons)
+        super().__init__(node, daemons=daemon_list, *args, **kwargs)

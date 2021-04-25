@@ -1,8 +1,4 @@
 """An enhanced CLI providing IP-related commands"""
-import sys
-from cmd import Cmd
-from select import poll
-
 from mininet.cli import CLI
 from mininet.log import lg
 
@@ -10,31 +6,6 @@ from ipmininet.utils import address_pair
 
 
 class IPCLI(CLI):
-
-    # XXX When PR https://github.com/mininet/mininet/pull/897
-    # is accepted, we can remove this constructor
-    def __init__(self, mininet, stdin=sys.stdin, script=None):
-        """Start and run interactive or batch mode CLI
-           mininet: Mininet network object
-           stdin: standard input for CLI
-           script: script to run in batch mode"""
-        self.mn = mininet
-        # Local variable bindings for py command
-        self.locals = {'net': mininet}
-        # Attempt to handle input
-        self.stdin = stdin
-        self.inPoller = poll()
-        self.inPoller.register(stdin)
-        self.inputFile = script
-        Cmd.__init__(self, stdin=self.stdin)
-        lg.info('*** Starting CLI:\n')
-
-        if self.inputFile:
-            self.do_source(self.inputFile)
-            return
-
-        self.initReadline()
-        self.run()
 
     def do_route(self, line: str = ""):
         """route destination: Print all the routes towards that destination
@@ -80,6 +51,19 @@ class IPCLI(CLI):
     def do_ping6pair(self, _line):
         """Ping (IPv6-only) between first two hosts, useful for testing."""
         self.mn.ping6Pair()
+
+    def do_link(self, line: str):
+        """ down/up the link between 2 specified routers, can specify multiple
+            multiple link
+            :param line: the router name between which the link as to be
+                         downed/up: r1 r2, r3 r4 [down/up]
+        """
+        all_args = line.split(',')
+        last_args = all_args[-1].split()
+        state = last_args[-1]
+        for elem in all_args[:-1]:
+            super().do_link(elem + " " + state)
+        super().do_link(all_args[-1])  # Do the last one
 
     def default(self, line: str):
         """Called on an input line when the command prefix is not recognized.

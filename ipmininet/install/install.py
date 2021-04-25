@@ -1,16 +1,16 @@
 import argparse
 import os
 import re
-import stat
 import sys
 
 # For imports to work during setup and afterwards
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import supported_distributions, identify_distribution, sh
 
-MininetVersion = "2.3.0d6"
-FRRoutingVersion = "7.1"
-OpenrRelease = "rc-20190419-11514"
+MininetVersion = "2.3.0"
+FRRoutingVersion = "7.5"
+LibyangVersion = "v1.0.215"
+ExaBGPVersion = "4.2.11"
 
 os.environ["PATH"] = "%s:/sbin:/usr/sbin/:/usr/local/sbin" % os.environ["PATH"]
 
@@ -32,6 +32,9 @@ def parse_args():
     parser.add_argument("-q", "--install-frrouting",
                         help="Install FRRouting (version %s) daemons"
                         % FRRoutingVersion,
+                        action="store_true")
+    parser.add_argument("-e", "--install-exabgp",
+                        help="Install ExaBGP (version %s) daemon" % ExaBGPVersion,
                         action="store_true")
     parser.add_argument("-r", "--install-radvd",
                         help="Install the RADVD daemon", action="store_true")
@@ -72,32 +75,27 @@ def install_mininet(output_dir: str, pip_install=True):
 
 
 def install_libyang(output_dir: str):
-
-    packages = []
-
+    dist.install("git", "cmake")
     if dist.NAME == "Ubuntu" or dist.NAME == "Debian":
-        dist.install("libpcre16-3", "libpcre3-dev", "libpcre32-3",
-                     "libpcrecpp0v5")
-        cmd = "dpkg -i"
-        libyang_url = "https://ci1.netdef.org/artifact/LIBYANG-YANGRELEASE" \
-                      "/shared/build-10/Debian-AMD64-Packages"
-        packages.extend(["libyang0.16_0.16.105-1_amd64.deb",
-                         "libyang-dev_0.16.105-1_amd64.deb"])
+        dist.install("libpcre3-dev")
     elif dist.NAME == "Fedora":
         dist.install("pcre-devel")
-        cmd = "rpm -ivh"
-        libyang_url = "https://ci1.netdef.org/artifact/LIBYANG-YANGRELEASE" \
-                      "/shared/build-10/Fedora-29-x86_64-Packages/"
-        packages.extend(["libyang-0.16.111-0.x86_64.rpm",
-                         "libyang-devel-0.16.111-0.x86_64.rpm"])
-    else:
-        return
 
-    for package in packages:
-        sh("wget %s/%s" % (libyang_url, package),
-           "%s %s" % (cmd, package),
-           "rm %s" % package,
-           cwd=output_dir)
+    sh("git clone https://github.com/CESNET/libyang.git", cwd=output_dir)
+    cloned_repo = os.path.join(output_dir, "libyang")
+    sh("git checkout %s" % LibyangVersion, "mkdir build", cwd=cloned_repo)
+    sh("cmake -DENABLE_LYD_PRIV=ON -DCMAKE_INSTALL_PREFIX:PATH=/usr -D CMAKE_BUILD_TYPE:String=\"Release\" ..",
+       "make", "make install", cwd=os.path.join(cloned_repo, "build"))
+
+
+def link_to_standard_dir(base_dir: str, standard_dir: str):
+    for root, _, files in os.walk(base_dir):
+        for f in files:
+            link = os.path.join(standard_dir, os.path.basename(f))
+            if os.path.exists(link):
+                os.remove(link)
+            os.symlink(os.path.join(root, f), link)
+        break
 
 
 def install_frrouting(output_dir: str):
@@ -108,11 +106,11 @@ def install_frrouting(output_dir: str):
     if dist.NAME == "Ubuntu" or dist.NAME == "Debian":
         dist.install("libreadline-dev", "libc-ares-dev", "libjson-c-dev",
                      "perl", "python3-dev", "libpam0g-dev", "libsystemd-dev",
-                     "libsnmp-dev", "pkg-config")
+                     "libsnmp-dev", "pkg-config", "libcap-dev")
     elif dist.NAME == "Fedora":
         dist.install("readline-devel", "c-ares-devel", "json-c-devel",
                      "perl-core", "python3-devel", "pam-devel", "systemd-devel",
-                     "net-snmp-devel", "pkgconfig")
+                     "net-snmp-devel", "pkgconfig", "libcap-devel")
 
     install_libyang(output_dir)
 
@@ -136,45 +134,48 @@ def install_frrouting(output_dir: str):
     sh("usermod -a -G frr root", may_fail=True)
     sh("usermod -a -G frrvty root", may_fail=True)
 
-    for root, _, files in os.walk(os.path.join(frrouting_install, "sbin")):
-        for f in files:
-            link = os.path.join("/usr/sbin", os.path.basename(f))
-            if os.path.exists(link):
-                os.remove(link)
-            os.symlink(os.path.join(root, f), link)
-        break
-    for root, _, files in os.walk(os.path.join(frrouting_install, "bin")):
-        for f in files:
-            link = os.path.join("/usr/bin", os.path.basename(f))
-            if os.path.exists(link):
-                os.remove(link)
-            os.symlink(os.path.join(root, f), link)
-        break
+    for curr_dir in ('sbin', 'bin'):
+        link_to_standard_dir(os.path.join(frrouting_install, curr_dir), "/usr/%s" % curr_dir)
 
 
-def install_openr(output_dir: str, openr_release=OpenrRelease,
-                  openr_remote="https://github.com/facebook/openr.git"):
-    dist.install("git")
-    openr_install = os.path.join(output_dir, "openr")
-    openr_build = os.path.join(openr_install, "build")
-    openr_buildscript = os.path.join(openr_build, "build_openr_debian.sh")
-    debian_system_builder = "debian_system_builder/debian_system_builder.py"
-    sh("git clone %s" % openr_remote,
-       cwd=output_dir)
-    sh("git checkout %s" % openr_release,
-       cwd=openr_install)
-    # Generate build script
-    with open(openr_buildscript, "w+") as f:
-        sh("python %s" % debian_system_builder,
-           stdout=f,
-           cwd=openr_build).wait()
-    # Make build script executable
-    os.chmod(openr_buildscript, stat.S_IRWXU)
+def install_openr(output_dir: str, may_fail=False):
+    # It's not possible to get a build script with pinned dependencies from the
+    # OpenR github repository. The checked-in build script has the dependencies
+    # pinned manually. Builds and installs OpenR release rc-20190419-11514.
+    # https://github.com/facebook/openr/releases/tag/rc-20190419-11514
+    script_name = "build_openr-rc-20190419-11514.sh"
+    openr_buildscript = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                     script_name)
     # Execute build script
-    sh(openr_buildscript,
-       cwd=openr_build,
-       shell=True,
-       executable="/bin/bash")
+    p = sh(openr_buildscript,
+           cwd=output_dir,
+           shell=True,
+           executable="/bin/bash",
+           may_fail=may_fail)
+    # We should end here only if may_fail is True
+    if p.returncode != 0:
+        print("WARNING: Ignoring failed OpenR installation.", file=sys.stderr)
+
+
+def install_exabgp(output_dir: str, may_fail=False):
+    git_url = "https://github.com/Exa-Networks/exabgp.git"
+    exabgp_src_folder = "exabgp-%s-src" % ExaBGPVersion
+    exabgp_path_src_dir = os.path.join(output_dir, exabgp_src_folder)
+    exabgp_self_executable = os.path.join(output_dir, "exabgp")
+    final_link = "/usr/sbin/exabgp"
+
+    sh("git clone {url} {src_dir}".format(url=git_url, src_dir=exabgp_src_folder),
+       cwd=output_dir, may_fail=may_fail)
+
+    sh("git checkout %s" % ExaBGPVersion, cwd=exabgp_path_src_dir, may_fail=may_fail)
+
+    # create self-contained executable
+    sh('python3 -m zipapp -o {executable_path} -m exabgp.application:main  -p "/usr/bin/env python3" lib'
+       .format(executable_path=exabgp_self_executable), cwd=exabgp_path_src_dir, may_fail=may_fail)
+
+    if os.path.exists(final_link):
+        os.remove(final_link)
+    os.symlink(exabgp_self_executable, final_link)
 
 
 def update_grub():

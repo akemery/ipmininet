@@ -70,60 +70,51 @@ The following code shows how to use all these abstractions:
         def build(self, *args, **kwargs):
 
             # AS1 routers
-            as1r1 = self.addRouter("as1r1", config=RouterConfig)
+            as1r1, as1r2, as1r3 = self.addRouters("as1r1", "as1r2", "as1r3",
+                                                  config=RouterConfig)
             as1r1.addDaemon(BGP)
-            as1r2 = self.addRouter("as1r2", config=RouterConfig)
             as1r2.addDaemon(BGP)
-            as1r3 = self.addRouter("as1r3", config=RouterConfig)
             as1r3.addDaemon(BGP)
 
-            self.addLink(as1r1, as1r2)
-            self.addLink(as1r1, as1r3)
-            self.addLink(as1r2, as1r3)
+            self.addLinks((as1r1, as1r2), (as1r1, as1r3), (as1r2, as1r3))
 
             # AS2 routers
-            as2r1 = self.addRouter("as2r1", config=RouterConfig)
+            as2r1, as2r2, as2r3 = self.addRouters("as2r1", "as2r2", "as2r3",
+                                                  config=RouterConfig)
             as2r1.addDaemon(BGP)
-            as2r2 = self.addRouter("as2r2", config=RouterConfig)
             as2r2.addDaemon(BGP)
-            as2r3 = self.addRouter("as2r3", config=RouterConfig)
             as2r3.addDaemon(BGP)
 
-            self.addLink(as2r1, as2r2)
-            self.addLink(as2r1, as2r3)
-            self.addLink(as2r2, as2r3)
+            self.addLinks((as2r1, as2r2), (as2r1, as2r3), (as2r2, as2r3))
 
             # AS3 routers
-            as3r1 = self.addRouter("as3r1", config=RouterConfig)
+            as3r1, as3r2, as3r3 = self.addRouters("as3r1", "as3r2", "as3r3",
+                                                  config=RouterConfig)
             as3r1.addDaemon(BGP)
-            as3r2 = self.addRouter("as3r2", config=RouterConfig)
             as3r2.addDaemon(BGP)
-            as3r3 = self.addRouter("as3r3", config=RouterConfig)
             as3r3.addDaemon(BGP)
 
-            self.addLink(as3r1, as3r2)
-            self.addLink(as3r1, as3r3)
-            self.addLink(as3r2, as3r3)
+            self.addLinks((as3r1, as3r2), (as3r1, as3r3), (as3r2, as3r3))
 
             # Inter-AS links
-            self.addLink(as1r1, as2r1)
-            self.addLink(as2r3, as3r1)
+            self.addLinks((as1r1, as2r1), (as2r3, as3r1))
 
-            # Add an access list to 'any'
+            # Add an access list to 'any' for both ipv4 and ipv6 AFI
             # This can be an IP prefix or address instead
-            all_al = AccessList('all', ('any',))
+            all_al4 = AccessList(family='ipv4', name='allv4', entries=('any',))
+            all_al6 = AccessList(family='ipv6', name='allv6', entries=('any',))
 
             # Add a community list to as2r1
-            loc_pref = CommunityList('loc-pref', '2:80')
+            loc_pref = CommunityList('loc-pref', community='2:80')
 
             # as2r1 set the local pref of all the route coming from as1r1 and matching the community list community to 80
             as2r1.get_config(BGP).set_local_pref(80, from_peer=as1r1, matching=(loc_pref,))
 
-            # as1r1 set the community of all the route sent to as2r1 and matching the access list all_al to 2:80
-            as1r1.get_config(BGP).set_community('2:80', to_peer=as2r1, matching=(all_al,))
+            # as1r1 set the community of all the route sent to as2r1 and matching the access lists all_al{4,6} to 2:80
+            as1r1.get_config(BGP).set_community('2:80', to_peer=as2r1, matching=(all_al4, all_al6))
 
-            #  as3r1 set the med of all the route coming from as2r3 and matching the access list all_al to 50
-            as3r1.get_config(BGP).set_med(50, to_peer=as2r3, matching=(all_al,))
+            #  as3r1 set the med of all the route coming from as2r3 and matching the access lists all_al{4,6} to 50
+            as3r1.get_config(BGP).set_med(50, to_peer=as2r3, matching=(all_al4, all_al6))
 
             # AS1 is composed of 3 routers that have a full-mesh set of iBGP peering between them
             self.addiBGPFullMesh(1, routers=[as1r1, as1r2, as1r3])
@@ -142,26 +133,232 @@ The following code shows how to use all these abstractions:
 
             super().build(*args, **kwargs)
 
+ExaBGP
+------
+
+ExaBGP is a daemon that help to inject custom BGP routes to another BGP routing daemon.
+This daemon do not replace a real routing daemon (e.g. FRRouting BGPD) as ExaBGP do not
+install routes to the FIB of the node. For example ExaBGP can be used to simulate a
+transit network router that inject many routes to another AS. We can then check the routing
+decision of the latter AS for the routes send from ExaBGP.
+
+As for BGP, ExaBGP can be added as a daemon of the node with ``router.addDaemon(ExaBGPDaemon, **kwargs)``.
+The default ExaBGP parameters that are set for the daemon are :
+
+.. automethod:: ipmininet.router.config.exabgp.ExaBGPDaemon.set_defaults
+    :noindex:
+
+To add custom routes, we defined several helper classes that help to represent a valid BGP Route for ExaBGP:
+
+.. autoclass:: ipmininet.router.config.exabgp.BGPRoute
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.exabgp.BGPAttribute
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.exabgp.ExaList
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.exabgp.HexRepresentable
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.exabgp.BGPAttributeFlags
+    :noindex:
+
+
+The following code shows how to use the ExaBGP daemon to add custom routes :
+
+.. testcode:: exabgp
+
+    from ipaddress import ip_network
+    from ipmininet.iptopo import IPTopo
+    from ipmininet.router.config import RouterConfig, ExaBGPDaemon, AF_INET, AF_INET6, \
+        ebgp_session, BGPRoute, BGPAttribute, ExaList, BGP
+
+    exa_routes = {
+        'ipv4': [
+            BGPRoute(ip_network('8.8.8.0/24'), [BGPAttribute("next-hop", "self"),
+                                                BGPAttribute("as-path", ExaList([1, 56, 97])),
+                                                BGPAttribute("med", 42),
+                                                BGPAttribute("origin", "egp")]),
+            BGPRoute(ip_network('30.252.0.0/16'), [BGPAttribute("next-hop", "self"),
+                                                   BGPAttribute("as-path", ExaList([1, 48964, 598])),
+                                                   BGPAttribute("med", 100),
+                                                   BGPAttribute("origin", "incomplete"),
+                                                   BGPAttribute("community", ExaList(["1:666", "468:45687"]))]),
+            BGPRoute(ip_network('1.2.3.4/32'), [BGPAttribute("next-hop", "self"),
+                                                BGPAttribute("as-path", ExaList([1, 49887, 39875, 3, 4])),
+                                                BGPAttribute("origin", "igp"),
+                                                BGPAttribute("local-preference", 42)])
+        ],
+        'ipv6': [
+            BGPRoute(ip_network("dead:beef:15:dead::/64"), [BGPAttribute("next-hop", "self"),
+                                                            BGPAttribute("as-path", ExaList([1, 4, 3, 5])),
+                                                            BGPAttribute("origin", "egp"),
+                                                            BGPAttribute("local-preference", 1000)]),
+            BGPRoute(ip_network("bad:c0ff:ee:bad:c0de::/80"), [BGPAttribute("next-hop", "self"),
+                                                               BGPAttribute("as-path", ExaList([1, 3, 4])),
+                                                               BGPAttribute("origin", "egp"),
+                                                               BGPAttribute("community",
+                                                                            ExaList(
+                                                                                ["2914:480", "2914:413", "2914:4621"]))]),
+            BGPRoute(ip_network("1:5ee:bad:c0de::/64"), [BGPAttribute("next-hop", "self"),
+                                                         BGPAttribute("as-path", ExaList([1, 89, 42, 5])),
+                                                         BGPAttribute("origin", "igp")])
+        ]
+    }
+
+
+    class MyTopology(IPTopo):
+        def build(self, *args, **kwargs):
+            """
+              +---+---+---+     +---+---+---+
+              |           |     |           |
+              |    as1    |     |    as2    |
+              |   ExaBGP  +-----+  FRR BGP  |
+              |           |     |           |
+              +---+---+---+     +---+---+---+
+            """
+
+            af4 = AF_INET(routes=exa_routes['ipv4'])
+            af6 = AF_INET6(routes=exa_routes['ipv6'])
+
+            # Add all routers
+            as1 = self.addRouter("as1", config=RouterConfig, use_v4=True, use_v6=True)
+            as1.addDaemon(ExaBGPDaemon, address_families=(af4, af6))
+
+            as2 = self.bgp('as2')
+
+            # Add links
+            las12 = self.addLink(as1, as2)
+            las12[as1].addParams(ip=("10.1.0.1/24", "fd00:12::1/64",))
+            las12[as2].addParams(ip=("10.1.0.2/24", "fd00:12::2/64",))
+
+            # Set AS-ownerships
+            self.addAS(1, (as1,))
+            self.addAS(2, (as2,))
+            # Add eBGP peering
+            ebgp_session(self, as1, as2)
+
+            super().build(*args, **kwargs)
+
+        def bgp(self, name):
+            r = self.addRouter(name, use_v4=True, use_v6=True)
+            r.addDaemon(BGP, debug=('updates', 'neighbor-events', 'zebra'), address_families=(
+                AF_INET(redistribute=('connected',)),
+                AF_INET6(redistribute=('connected',))))
+            return r
 
 IPTables
 --------
 
 This is currently mainly a proxy class to generate a list of static rules to pass to iptables.
-As such, see `man iptables` and `man iptables-extensions`
-to see the various table names, commands, pre-existing chains, ...
 
 It takes one parameter:
 
 .. automethod:: ipmininet.router.config.iptables.IPTables.set_defaults
     :noindex:
 
+These rules can be Rule objects with raw iptables command
+As such, see `man iptables` and `man iptables-extensions`
+to see the various table names, commands, pre-existing chains, ...
+
+.. autoclass:: ipmininet.router.config.iptables.Rule
+    :noindex:
+
+In this example, only ICMP traffic will be allowed between the routers over
+IPv4 as well as non-privileged TCP ports:
+
+.. testcode:: iptables
+
+    from ipmininet.iptopo import IPTopo
+    from ipmininet.router.config import IPTables, Rule
+
+    class MyTopology(IPTopo):
+
+        def build(self, *args, **kwargs):
+            r1 = self.addRouter('r1')
+            r2 = self.addRouter('r2')
+            self.addLink(r1, r2)
+
+            ip_rules = [Rule("-P INPUT DROP"),
+                        Rule("-A INPUT -p tcp -m multiport --ports 80:1024 -j "
+                             "DROP"),
+                        Rule("-A INPUT -p tcp -m multiport ! --ports 1480 -j "
+                             "ACCEPT"),
+                        Rule("-A INPUT -p icmp -j ACCEPT")]
+            r1.addDaemon(IPTables, rules=ip_rules)
+            r2.addDaemon(IPTables, rules=ip_rules)
+
+            super().build(*args, **kwargs)
+
+You can use other classes for better abstraction.
+You can use the Chain class or one of its subclasses:
+
+.. autoclass:: ipmininet.router.config.iptables.Chain
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.Filter
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.InputFilter
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.OutputFilter
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.TransitFilter
+    :noindex:
+
+Each rule in the Chain instance is a ChainRule that you can use directly or
+use one of its subclasses:
+
+.. autoclass:: ipmininet.router.config.iptables.ChainRule
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.Allow
+    :noindex:
+
+.. autoclass:: ipmininet.router.config.iptables.Deny
+    :noindex:
+
+Each input value used for matching in ChainRule constructor can be negated
+with the NOT class:
+
+.. autoclass:: ipmininet.router.config.iptables.NOT
+    :noindex:
+
+This example implements the same properties as the previous one with the API.
+
+.. testcode:: iptables2
+
+    from ipmininet.iptopo import IPTopo
+    from ipmininet.router.config import IPTables, InputFilter, NOT, \
+        Deny, Allow
+
+    class MyTopology(IPTopo):
+
+        def build(self, *args, **kwargs):
+            r1 = self.addRouter('r1')
+            r2 = self.addRouter('r2')
+            self.addLink(r1, r2)
+
+            ip_rules = [InputFilter(default="DROP", rules=[
+                            Deny(proto='tcp', port='80:1024'),
+                            Allow(proto='tcp', port=NOT(1480)),
+                            Allow(proto='icmp'),
+                        ])]
+            r1.addDaemon(IPTables, rules=ip_rules)
+            r2.addDaemon(IPTables, rules=ip_rules)
+
+            super().build(*args, **kwargs)
 
 IP6Tables
 ---------
 
 This class is the IPv6 equivalent to IPTables.
 
-It also takes one parameter:
+It also takes the same parameter (see previous section for details):
 
 .. automethod:: ipmininet.router.config.iptables.IP6Tables.set_defaults
     :noindex:
@@ -170,11 +367,46 @@ It also takes one parameter:
 OpenR
 -----
 
-The OpenR daemon can be tuned by adding keyword arguments to ``router.addDaemon(OpenR, **kargs)``.
-Here is a list of the parameters:
+The OpenR daemon can be tuned by adding keyword arguments to
+``router.addDaemon(Openr, **kargs)``.  Here is a list of the parameters:
 
 .. automethod:: ipmininet.router.config.openrd.OpenrDaemon._defaults
     :noindex:
+
+At the moment IPMininet supports OpenR release `rc-20190419-11514
+<https://github.com/facebook/openr/releases/tag/rc-20190419-11514>`_. This
+release can be build from the script
+``install/build_openr-rc-20190419-11514.sh``.
+
+As of ``rc-20190419-11514`` the OpenR daemon creates `ZeroMQ
+<https://zeromq.org>`_ sockets in ``/tmp``. Therefore, it is advisable for
+networks with several OpenR daemons to isolate the ``/tmp`` folder within Linux
+namespaces. ``OpenrRouter`` utilizes Mininet's ``privateDirs`` option to
+provide this isolation. We can pass the ``cls`` option to ``addRouter`` to
+select custom router classes:
+
+.. testcode:: OpenR
+
+    from ipmininet.iptopo import IPTopo
+    from ipmininet.router import OpenrRouter
+    from ipmininet.node_description import OpenrRouterDescription
+
+
+    class MyTopology(IPTopo):
+
+        def build(self, *args, **kwargs):
+            r1 = self.addRouter('r1',
+                                cls=OpenrRouter,
+                                routerDescription=OpenrRouterDescription)
+            r1.addOpenrDaemon()
+
+            r2 = self.addRouter('r2',
+                                cls=OpenrRouter,
+                                routerDescription=OpenrRouterDescription)
+            r2.addOpenrDaemon()
+            self.addLink(r1, r2)
+
+            super().build(*args, **kwargs)
 
 
 OSPF
@@ -210,8 +442,7 @@ We can pass parameters to links and interfaces when calling ``addLink()``:
         def build(self, *args, **kwargs):
 
             # Add routers (OSPF daemon is added by default with the default config)
-            router1 = self.addRouter("router1")
-            router2 = self.addRouter("router2")
+            router1, router2 = self.addRouters("router1", "router2")
 
             # Add link
             l = self.addLink(router1, router2,
@@ -235,14 +466,10 @@ while the link between r2 and r3 is in area '0.0.0.5':
         def build(self, *args, **kwargs):
 
             # Add routers (OSPF daemon is added by default with the default config)
-            r1 = self.addRouter("r1")
-            r2 = self.addRouter("r2")
-            r3 = self.addRouter("r3")
+            r1, r2, r3 = self.addRouters("r1", "r2", "r3")
 
             # Add links
-            self.addLink(r1, r2)
-            self.addLink(r1, r3)
-            self.addLink(r2, r3)
+            self.addLinks((r1, r2), (r1, r3), (r2, r3))
 
             # Define OSPF areas
             self.addOSPFArea('0.0.0.1', routers=[r1], links=[])
@@ -282,8 +509,7 @@ It uses the following interface parameters:
         def build(self, *args, **kwargs):
 
             # Add routers (OSPF daemon is added by default with the default config)
-            router1 = self.addRouter("router1")
-            router2 = self.addRouter("router2")
+            router1, router2 = self.addRouters("router1", "router2")
 
             # Add link
             l = self.addLink(router1, router2,
@@ -306,7 +532,7 @@ When adding PIMD to a router with ``router.addDaemon(PIMD, **kargs)``, we can gi
 Named
 -----
 
-When adding PIMD to a host with ``host.addDaemon(Named, **kargs)``, we can give the following parameters:
+When adding Named to a host with ``host.addDaemon(Named, **kargs)``, we can give the following parameters:
 
 .. automethod:: ipmininet.host.config.named.Named.set_defaults
     :noindex:
@@ -440,6 +666,16 @@ if they fit in its domain name. Otherwise, another zone will be created.
 
             super().build(*args, **kwargs)
 
+By default, subdomains authority is delegated to the direct child zone name
+servers by copying the NS records of the child zone to the parent zone. You can
+remove this behavior, by zone, by setting the parameter ``subdomain_delegation``
+to ``False``. You can also delegate more zones by using the ``delegated_zones``
+parameter.
+
+By default, all DNS servers that are not root DNS servers have hints to the
+root DNS servers (if the root zone is added to the topology). This behavior
+can be disabled by setting the parameter ``hint_root_zone`` of ``Named`` to
+``False``.
 
 RADVD
 -----
@@ -533,14 +769,13 @@ We can pass parameters to links when calling addLink():
     class MyTopology(IPTopo):
 
         def build(self, *args, **kwargs):
-            r1 = self.addRouter("r1", config=RouterConfig)  # We use RouterConfig to prevent OSPF6 to be run
-            r2 = self.addRouter("r2", config=RouterConfig)
+            # We use RouterConfig to prevent OSPF6 to be run
+            r1, r2 = self.addRouters("r1", "r2", config=RouterConfig)
             h1 = self.addHost("h1")
             h2 = self.addHost("h2")
 
             self.addLink(r1, r2, igp_metric=10)  # The IGP metric is set to 10
-            self.addLink(r1, h1)
-            self.addLink(r2, h2)
+            self.addLinks((r1, h1), (r2, h2))
 
             r1.addDaemon(RIPng)
             r2.addDaemon(RIPng)
