@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from utils import supported_distributions, identify_distribution, sh
 
 MininetVersion = "2.3.0"
-FRRoutingVersion = "7.5"
+FRRoutingVersion = "7.5.1"
 LibyangVersion = "v1.0.215"
 ExaBGPVersion = "4.2.11"
 
