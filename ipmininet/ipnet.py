@@ -195,6 +195,11 @@ class IPNet(Mininet):
         log.info('\n')
 
     def stop(self):
+        log.info('*** Stopping', len(self.hosts), 'hosts\n')
+        cmd = "ifconfig"
+        for host in self.hosts:
+            log.info(host.name+ ' ')
+            log.info(host.cmd(cmd)+ ' ')
         log.info('*** Stopping', len(self.routers), 'routers\n')
         for router in self.routers:
             log.info(router.name + ' ')
