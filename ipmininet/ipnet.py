@@ -13,6 +13,7 @@ from ipaddress import ip_network, ip_interface, IPv4Address, IPv6Address, \
 from . import MIN_IGP_METRIC, OSPF_DEFAULT_AREA
 from .utils import otherIntf, realIntfList, L3Router, address_pair, has_cmd, \
     is_subnet_of
+import unittest
 from .host import IPHost
 from .router import Router
 from .router.config import BasicRouterConfig, RouterConfig
@@ -25,6 +26,41 @@ from mininet.log import lg as log
 
 # ping6 is not provided by default on newer systems
 PING6_CMD = 'ping6' if has_cmd('ping6') else 'ping -6'
+
+class IPmininetUnitTest(unittest.TestCase):
+    """ IPmininetUniTest on IPmininet network topo """
+    def __init__(self, routers, hosts):
+        self.hosts = hosts
+        self.routers = routers
+        
+    def getRouters(self):
+        return self.routers
+        
+    def getRouter(self, name):
+        for router in self.routers:
+            if router.name == name:
+                return router
+        return None
+        
+    def getHosts(self):
+        return self.hosts
+        
+    def getHost(self, name):
+        for host in self.hosts:
+            if host.name == name:
+                return host
+        return None
+        
+    def pingPairHost(self, name)
+        host = getHost(name)
+        for host in self.hosts:
+            if host.name != name:
+                log.info("ping from"+ name "to" + host.name)
+                
+    def pingPairHosts(self):
+        for host in self.hosts:
+            pingPairHost(host.name)
+                   
 
 
 class IPNet(Mininet):
@@ -201,6 +237,8 @@ class IPNet(Mininet):
             log.info(host.name+ ' ')
             log.info(host.cmd(cmd)+ ' ')
         log.info('*** Stopping', len(self.routers), 'routers\n')
+        test = IPmininetUnittest(self.hosts, self.routers)
+        test.PingPairHosts()
         for router in self.routers:
             log.info(router.name + ' ')
             router.terminate()
