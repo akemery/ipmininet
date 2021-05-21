@@ -60,6 +60,12 @@ class IPmininetUnitTest(unittest.TestCase):
     def pingPairHosts(self):
         for host in self.hosts:
             pingPairHost(host.name)
+            
+    def test_pingall(self, answer, timeout=100):
+        r = self.pingAll(timeout)
+        log.info(r)
+        assertEqual(r, answer)
+        
                    
 
 
