@@ -23,6 +23,8 @@ from mininet.net import Mininet
 from mininet.node import Host, Controller, Node
 from mininet.log import lg as log
 
+from ipmininet.inginioustest import IPmininetUnitTest
+
 # ping6 is not provided by default on newer systems
 PING6_CMD = 'ping6' if has_cmd('ping6') else 'ping -6'
 
@@ -194,8 +196,10 @@ class IPNet(Mininet):
         log.info('\n')
 
     def stop(self):
-        test = IPmininetUnittest(self.hosts, self.routers)
-        test.PingPairHosts()
+        test = IPmininetUnitTest(self.routers, self.hosts)
+        log.info(test.testPingAll())
+        answers = test.buildRoutingTables()
+        test.testAllRoutingTables(answers)
         
         log.info('*** Stopping', len(self.hosts), 'hosts\n')
         
