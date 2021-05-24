@@ -162,6 +162,7 @@ class IPNode(Node):
             # Busy-wait if the daemon needs some time before being started
             while not d.has_started(self._processes):
                 time.sleep(.001)
+            print(d.startup_line)
 
     def terminate(self):
         """Stops this node and sets back all sysctls to their old values"""
