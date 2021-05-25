@@ -23,7 +23,6 @@ from mininet.net import Mininet
 from mininet.node import Host, Controller, Node
 from mininet.log import lg as log
 
-from ipmininet.testinginious import TestInginious
 
 # ping6 is not provided by default on newer systems
 PING6_CMD = 'ping6' if has_cmd('ping6') else 'ping -6'
@@ -196,9 +195,6 @@ class IPNet(Mininet):
         log.info('\n')
 
     def stop(self):
-        test = TestInginious(self.routers, self.hosts)
-        test.testAll()
-        
         log.info('*** Stopping', len(self.hosts), 'hosts\n')
         
         log.info('*** Stopping', len(self.routers), 'routers\n')
