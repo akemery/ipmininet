@@ -195,6 +195,10 @@ class IPNet(Mininet):
         log.info('\n')
 
     def stop(self):
+        try:
+            self.topo.pre_stop(self)
+        except AttributeError as e:
+            log.error('*** Skipping pre_stop():', e, '\n')           
         log.info('*** Stopping', len(self.hosts), 'hosts\n')
         
         log.info('*** Stopping', len(self.routers), 'routers\n')

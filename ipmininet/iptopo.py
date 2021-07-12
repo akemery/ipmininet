@@ -42,6 +42,12 @@ class IPTopo(Topo):
         and before it is started.
 
         :param net: The freshly built (Mininet) network"""
+        
+    def pre_stop(self, net: IPNet):
+        """ A method that will be invoked before the topology will be stopped
+        
+        :param net: the Mininet network that will be stopped
+        """
 
     def isNodeType(self, n: str, x) -> bool:
         """Return whether node n has a key x set to True
